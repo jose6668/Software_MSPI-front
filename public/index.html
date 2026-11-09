@@ -13,6 +13,7 @@
   <div class="layout" id="layout">
     <aside class="rail" aria-label="MSPI">
       <div class="brand"><img src="/marca.svg" alt="" width="40" height="40"><span>MSPI</span></div>
+      <div id="workspace-navigation" hidden></div>
       <div class="rail-copy"><span class="eyebrow">ESPACIO DE TRABAJO</span><p>Gestión de seguridad y privacidad de la información</p></div>
       <div class="pattern" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div class="rail-foot"><span></span> Acceso de organizaciones</div>
@@ -40,8 +41,11 @@
   </template>
   <template id="session-bar">
     <header class="session-bar">
-      <div class="account"><span class="account-icon" aria-hidden="true"></span><span class="account-name"></span></div>
-      <button class="secondary logout" type="button">Cerrar sesión</button>
+      <div class="company-context" hidden></div>
+      <div class="session-controls">
+        <div class="account"><span class="account-icon" aria-hidden="true"></span><span class="account-name"></span></div>
+        <button class="secondary logout" type="button">Cerrar sesión</button>
+      </div>
     </header>
   </template>
 </body>

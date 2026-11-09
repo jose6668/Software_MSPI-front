@@ -46,3 +46,8 @@ const pagination = (page) => '?pagina=' + page + '&tamano=20';
 export const evaluations = (companyId, page) => send(evaluationListPath(companyId) + pagination(page));
 export const evaluation = (companyId, id) => send(evaluationPath(companyId, id));
 export const responses = (companyId, id, page) => send(evaluationPath(companyId, id) + '/respuestas' + pagination(page));
+const evidencePath = (companyId, id, responseId) =>
+  evaluationPath(companyId, id) + '/respuestas/' + encodeURIComponent(responseId) + '/evidencias';
+export const evidence = (companyId, id, responseId, page) => send(evidencePath(companyId, id, responseId) + pagination(page));
+export const evidenceFile = (companyId, id, responseId, evidenceId) =>
+  prefix + evidencePath(companyId, id, responseId) + '/' + encodeURIComponent(evidenceId) + '/archivo';

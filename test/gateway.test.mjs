@@ -9,6 +9,13 @@ import { gateway, route } from '../server/gateway.mjs';
 
 const directory = mkdtempSync(join(tmpdir(), 'mspi-front-test-'));
 const origin = 'https://localhost:6443';
+const companyId = 'e01b03ee-a2d7-4b42-a76e-e307737a3300';
+const evaluationId = '3afedfc1-4cc8-484b-b513-e7990a701bab';
+const evidenceList = `/api/v1/empresas/${companyId}/evaluaciones/${evaluationId}/respuestas/${evaluationId}/evidencias`;
+const file = evidenceList + '/' + evaluationId + '/archivo';
+const unsafeFile = evidenceList + '/' + companyId + '/archivo';
+const inlineFile = evidenceList + '/3afedfc1-4cc8-484b-b513-e7990a701bac/archivo';
+const attachment = "attachment; filename*=UTF-8''acta%20de%20revisi%C3%B3n.pdf";
 let publicServer;
 let api;
 let tls;
@@ -54,6 +61,11 @@ before(async () => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     last = { path: req.url, method: req.method, headers: req.headers, body: Buffer.concat(chunks).toString() };
+    if (req.url === file || req.url === unsafeFile || req.url === inlineFile) {
+      res.writeHead(200, { 'Content-Type': req.url === unsafeFile ? 'text/html' : 'application/pdf',
+        'Content-Disposition': req.url === inlineFile ? 'inline' : attachment });
+      return res.end('fixture');
+    }
     res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': 'MSPISESSION=fixture; Path=/; Secure; HttpOnly',
       'Cache-Control': 'public', 'X-Internal-Detail': 'omitted' });
     res.end('{}');
@@ -98,6 +110,36 @@ test('exposes only the read-only evaluation routes with bounded pagination', () 
     answers + '?pagina=0&tamano=21', answers + page + '&tamano=20', answers + page + '&grupo=a',
     answers + '/' + evaluation, '/api/v1' + detail + '/resultados', '/api/v1' + list + '/bad-id']) {
     assert.equal(route('GET', path), undefined, path);
+  }
+});
+
+test('limits evidence to paged listings and downloads of a specific attachment', () => {
+  const paged = evidenceList + '?pagina=1&tamano=20';
+  assert.deepEqual(route('GET', paged), { upstream: paged });
+  assert.deepEqual(route('GET', file), { upstream: file, download: true });
+  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']) {
+    assert.equal(route(method, evidenceList), undefined);
+    assert.equal(route(method, file), undefined);
+  }
+  for (const path of [file + '?pagina=0&tamano=20', evidenceList + '?tamano=100',
+    file.replace(evaluationId + '/archivo', 'bad-id/archivo'), evidenceList + '/archivo']) {
+    assert.equal(route('GET', path), undefined);
+  }
+});
+
+test('forwards a sandboxed attachment and rejects inline or unexpected content', async () => {
+  const result = await call(publicServer, file, { headers: { Cookie: 'MSPISESSION=fixture' } });
+  assert.equal(result.status, 200);
+  assert.equal(result.headers['content-disposition'], attachment);
+  assert.equal(result.headers['content-type'], 'application/pdf');
+  assert.equal(result.headers['content-security-policy'], "sandbox; default-src 'none'");
+  assert.equal(result.headers['x-content-type-options'], 'nosniff');
+  assert.equal(result.headers['cache-control'], 'no-store');
+  assert.equal(result.text, 'fixture');
+  assert.equal(last.headers.cookie, 'MSPISESSION=fixture');
+  assert.match(last.headers.accept, /application\/pdf/);
+  for (const path of [unsafeFile, inlineFile]) {
+    assert.equal((await call(publicServer, path)).status, 502);
   }
 });
 
