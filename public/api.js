@@ -45,6 +45,7 @@ const pagination = (page) => '?pagina=' + page + '&tamano=20';
 
 export const evaluations = (companyId, page) => send(evaluationListPath(companyId) + pagination(page));
 export const evaluation = (companyId, id) => send(evaluationPath(companyId, id));
+export const evaluationResults = (companyId, id) => send(evaluationPath(companyId, id) + '/resultados');
 export const responses = (companyId, id, page) => send(evaluationPath(companyId, id) + '/respuestas' + pagination(page));
 const evidencePath = (companyId, id, responseId) =>
   evaluationPath(companyId, id) + '/respuestas/' + encodeURIComponent(responseId) + '/evidencias';

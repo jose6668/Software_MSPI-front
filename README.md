@@ -8,6 +8,8 @@ HU-FRONT-001 permite iniciar sesión, listar y elegir una empresa autorizada, co
 
 El espacio autenticado usa la navegación de Panorama. En el detalle de una evaluación, abre **Evidencias** en una respuesta para consultar y descargar sus adjuntos autorizados ([HU-FRONT-003](docs/hu/HU-FRONT-003.md)).
 
+El **Resumen de empresa** muestra los resultados de la evaluación más reciente disponible. El detalle también presenta sus resultados por dominio y por cláusula ([HU-FRONT-004](docs/hu/HU-FRONT-004.md)).
+
 Desde PowerShell, indicar el nombre del proyecto Compose del backend y el directorio TLS privado que contiene `server.p12`, `server-password.txt` y `ca.crt`:
 
 ```powershell
