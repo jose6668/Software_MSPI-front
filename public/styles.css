@@ -70,6 +70,18 @@ form>input{margin-bottom:11px}
 .details dt{margin-top:17px;font-weight:650}
 .details dd{margin:0 0 17px;font-size:1.06rem;overflow-wrap:anywhere}
 .loading{color:var(--muted)}
+.view-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px}
+.view-actions .back{margin-bottom:0}
+.section-link{margin-top:12px;text-decoration:none}
+.status{flex:none;display:inline-block;padding:4px 10px;border-radius:20px;background:#e8f0e3;color:#344b36;font-size:.82rem;font-weight:700}
+.evaluation-details{margin-bottom:40px}
+.preserve-lines{white-space:pre-wrap;overflow-wrap:anywhere}
+.response-row{padding:18px 0;border-bottom:1px solid var(--line)}
+.response-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:8px 24px}
+.response-heading h3,.response-row h4{margin:0;font-size:1rem}
+.response-row h4{margin-top:10px}
+.response-row p{margin:4px 0 0;color:var(--muted)}
+@media(max-width:440px){.evaluation-link,.response-heading{flex-wrap:wrap;gap:8px}.pager{flex-wrap:wrap}}
 @keyframes reveal{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media(max-width:720px){.layout,.signed-in{display:block}.rail,.signed-in .rail{padding:23px 24px;min-height:0}.rail-copy,.signed-in .rail-copy{margin:0;padding:22px 0 0;max-width:280px}.rail-copy p{font-size:1.18rem;letter-spacing:-.02em;margin-top:7px;line-height:1.28}.rail-copy .eyebrow,.rail-foot,.signed-in .rail-copy{display:none}.pattern{right:-19rem;bottom:-21rem}.brand{font-size:1.25rem}.brand img{width:33px;height:33px}.work,.signed-in .work{padding:35px 24px 48px}.session-bar{margin-bottom:35px;gap:9px}.logout{padding:0 10px;font-size:.87rem}.account-name{font-size:.88rem}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
