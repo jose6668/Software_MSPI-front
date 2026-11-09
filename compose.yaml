@@ -1,0 +1,38 @@
+services:
+  frontend:
+    build: .
+    user: '1000:1000'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 1.0
+    mem_limit: 256m
+    memswap_limit: 256m
+    pids_limit: 32
+    environment:
+      MSPI_FRONT_ORIGIN: https://localhost:${MSPI_FRONT_PORT:-6443}
+    ports:
+      - '127.0.0.1:${MSPI_FRONT_PORT:-6443}:8443'
+    volumes:
+      - type: bind
+        source: ${MSPI_FRONT_TLS_DIR:?Indica la carpeta TLS privada del servidor}/server.p12
+        target: /run/mspi/server.p12
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${MSPI_FRONT_TLS_DIR:?Indica la carpeta TLS privada del servidor}/server-password.txt
+        target: /run/mspi/server-password.txt
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${MSPI_FRONT_TLS_DIR:?Indica la carpeta TLS privada del servidor}/ca.crt
+        target: /run/mspi/ca.crt
+        read_only: true
+        bind: {create_host_path: false}
+    networks: [edge, api]
+    logging: {driver: json-file, options: {max-size: 5m, max-file: '3'}}
+networks:
+  edge:
+  api:
+    external: true
+    name: ${MSPI_FRONT_NETWORK:-mspi-front-api}

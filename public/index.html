@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MSPI · Espacio de trabajo</title>
+  <link rel="icon" href="/marca.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#contenido">Ir al contenido</a>
+  <div class="layout" id="layout">
+    <aside class="rail" aria-label="MSPI">
+      <div class="brand"><img src="/marca.svg" alt="" width="40" height="40"><span>MSPI</span></div>
+      <div class="rail-copy"><span class="eyebrow">ESPACIO DE TRABAJO</span><p>Gestión de seguridad y privacidad de la información</p></div>
+      <div class="pattern" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="rail-foot"><span></span> Acceso de organizaciones</div>
+    </aside>
+    <main id="contenido" tabindex="-1" class="work">
+      <div id="workspace" class="content" aria-busy="true">
+        <p role="status">Comprobando sesión…</p>
+      </div>
+      <noscript>Activa JavaScript para entrar al espacio de trabajo.</noscript>
+    </main>
+  </div>
+  <template id="login-view">
+    <span class="eyebrow label">ACCESO</span>
+    <h1>Iniciar sesión</h1>
+    <p class="intro">Ingresa con tu cuenta para consultar tus empresas.</p>
+    <form id="login" method="post" action="/api/v1/identidad/sesion">
+      <label for="correo">Correo electrónico</label>
+      <input id="correo" name="correo" type="email" autocomplete="username" maxlength="254" required placeholder="nombre@empresa.com">
+      <label for="contrasena">Contraseña</label>
+      <div class="password-field"><input id="contrasena" name="contrasena" type="password" autocomplete="current-password" maxlength="1024" required>
+        <button id="mostrar" class="text-button" type="button" aria-controls="contrasena" aria-pressed="false">Mostrar</button></div>
+      <p class="message" role="alert" hidden></p>
+      <button class="primary" type="submit">Entrar <span aria-hidden="true">→</span></button>
+    </form>
+  </template>
+  <template id="session-bar">
+    <header class="session-bar">
+      <div class="account"><span class="account-icon" aria-hidden="true"></span><span class="account-name"></span></div>
+      <button class="secondary logout" type="button">Cerrar sesión</button>
+    </header>
+  </template>
+</body>
+</html>

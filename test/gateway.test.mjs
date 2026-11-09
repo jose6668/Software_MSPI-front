@@ -1,0 +1,117 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, rmdirSync } from 'node:fs';
+import { createServer, request } from 'node:https';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, before, test } from 'node:test';
+import { gateway, route } from '../server/gateway.mjs';
+
+const directory = mkdtempSync(join(tmpdir(), 'mspi-front-test-'));
+const origin = 'https://localhost:6443';
+let publicServer;
+let api;
+let tls;
+let apiTls;
+let last;
+
+function certificate(name) {
+  const cert = join(directory, name + '.pem');
+  const key = join(directory, name + '.key');
+  execFileSync(process.env.OPENSSL_BIN || 'openssl', [
+    'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-sha256', '-days', '1',
+    '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost',
+    '-keyout', key, '-out', cert,
+  ], { stdio: 'ignore' });
+  return { cert: readFileSync(cert), key: readFileSync(key) };
+}
+function listen(server) {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve(server));
+  });
+}
+function close(server) {
+  return new Promise(resolve => server ? server.close(resolve) : resolve());
+}
+function call(server, path, { method = 'GET', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: '127.0.0.1', port: server.address().port, servername: 'localhost',
+      ca: tls.cert, path, method, headers: { Host: 'localhost:6443', ...headers } }, res => {
+      const parts = [];
+      res.on('data', data => parts.push(data));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(parts).toString() }));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+before(async () => {
+  tls = certificate('front');
+  apiTls = certificate('api');
+  api = await listen(createServer(apiTls, async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    last = { path: req.url, method: req.method, headers: req.headers, body: Buffer.concat(chunks).toString() };
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': 'MSPISESSION=fixture; Path=/; Secure; HttpOnly',
+      'Cache-Control': 'public', 'X-Internal-Detail': 'omitted' });
+    res.end('{}');
+  }));
+  publicServer = await listen(gateway({ tls, ca: apiTls.cert, origin, apiHost: '127.0.0.1', apiPort: api.address().port }));
+});
+after(async () => {
+  await close(publicServer);
+  await close(api);
+  for (const name of ['front.pem', 'front.key', 'api.pem', 'api.key']) {
+    rmSync(join(directory, name), { force: true });
+  }
+  rmdirSync(directory);
+});
+
+test('routes only the endpoints of the first story', () => {
+  assert.deepEqual(route('GET', '/api/v1/mis-empresas?pagina=1&tamano=20'),
+    { upstream: '/api/v1/mis-empresas?pagina=1&tamano=20' });
+  for (const path of ['/api/v1/identidad/sesion?contrasena=ignored', '/actuator/health',
+    '/api/v1/empresas/../identidad/sesion', '/api/v1/identidad/%73esion', '//mspi-api/',
+    '/api/v1/mis-empresas?pagina=0&tamano=100', 'https://outside.example/']) {
+    assert.equal(route('GET', path), undefined, path);
+  }
+  assert.equal(route('PUT', '/api/v1/identidad/sesion'), undefined);
+});
+
+test('proxies HTTPS with the session cookie and CSRF but drops forwarded IP', async () => {
+  const body = JSON.stringify({ correo: 'person@example.test', contrasena: 'fixture' });
+  const result = await call(publicServer, '/api/v1/identidad/sesion', { method: 'POST', body,
+    headers: { Origin: origin, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body),
+      'X-CSRF-TOKEN': 'fixture-csrf', Cookie: 'MSPISESSION=fixture', 'X-Forwarded-For': '203.0.113.1' } });
+  assert.equal(result.status, 200);
+  assert.equal(result.headers['cache-control'], 'no-store');
+  assert.deepEqual(result.headers['set-cookie'], ['MSPISESSION=fixture; Path=/; Secure; HttpOnly']);
+  assert.equal(result.headers['x-internal-detail'], undefined);
+  assert.equal(last.method, 'POST');
+  assert.equal(last.headers.cookie, 'MSPISESSION=fixture');
+  assert.equal(last.headers['x-csrf-token'], 'fixture-csrf');
+  assert.equal(last.headers['x-forwarded-for'], undefined);
+  assert.equal(last.body, body);
+});
+
+test('rejects a foreign origin, wrong host and oversized chunked body before proxying', async () => {
+  const previous = last;
+  const path = '/api/v1/identidad/sesion';
+  assert.equal((await call(publicServer, path, { method: 'DELETE', headers: { Origin: 'https://outside.example' } })).status, 403);
+  assert.equal((await call(publicServer, '/', { headers: { Host: 'outside.example' } })).status, 421);
+  const huge = await call(publicServer, path, { method: 'POST', body: 'a'.repeat(20_000),
+    headers: { Origin: origin, 'Content-Type': 'application/json', 'Transfer-Encoding': 'chunked' } });
+  assert.equal(huge.status, 413);
+  assert.equal(last, previous);
+});
+
+test('rejects an upstream certificate not signed by the configured CA', async () => {
+  const misconfigured = await listen(gateway({ tls, ca: tls.cert, origin, apiHost: '127.0.0.1', apiPort: api.address().port }));
+  try {
+    const result = await call(misconfigured, '/api/v1/identidad/sesion');
+    assert.equal(result.status, 502);
+    assert.equal(JSON.parse(result.text).code, 'API_NO_DISPONIBLE');
+  } finally { await close(misconfigured); }
+});
