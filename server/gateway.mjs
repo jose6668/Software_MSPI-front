@@ -7,9 +7,12 @@ const companyRoute = new RegExp('^/empresas/' + uuid + '$');
 const contextRoute = new RegExp('^/api/v1/empresas/' + uuid + '/contexto$');
 const evaluationListPath = '/empresas/' + uuid + '/evaluaciones';
 const evaluationPath = evaluationListPath + '/' + uuid;
+const evidencePath = evaluationPath + '/respuestas/' + uuid + '/evidencias';
 const evaluationView = new RegExp('^' + evaluationListPath + '(?:/' + uuid + ')?$');
 const evaluationDetail = new RegExp('^/api/v1' + evaluationPath + '$');
-const pagedEvaluations = new RegExp('^/api/v1(?:' + evaluationListPath + '|' + evaluationPath + '/respuestas)$');
+const pagedEvaluations = new RegExp('^/api/v1(?:' + evaluationListPath + '|' + evaluationPath + '/respuestas|' + evidencePath + ')$');
+const evidenceDownload = new RegExp('^/api/v1' + evidencePath + '/' + uuid + '/archivo$');
+const evidenceTypes = ['application/pdf', 'image/png', 'image/jpeg'];
 const maxBody = 16 * 1024;
 const securityHeaders = {
   'Cache-Control': 'no-store',
@@ -37,6 +40,7 @@ export function route(method, target) {
     return;
   }
   if (query !== undefined) return;
+  if (method === 'GET' && evidenceDownload.test(path)) return { upstream: path, download: true };
   if (path === '/api/v1/identidad/sesion' && ['GET', 'POST', 'DELETE'].includes(method)) {
     return { upstream: path };
   }
@@ -100,6 +104,7 @@ export function gateway({ tls, ca, origin, apiHost = 'mspi-api', apiPort = 8443 
 
     let body;
     const headers = { Accept: 'application/json, application/problem+json' };
+    if (selected.download) headers.Accept = [...evidenceTypes, headers.Accept].join(', ');
     if (req.headers.cookie) headers.Cookie = req.headers.cookie;
     if (req.headers['x-csrf-token']) headers['X-CSRF-TOKEN'] = req.headers['x-csrf-token'];
     if (req.method === 'POST') {
@@ -124,6 +129,16 @@ export function gateway({ tls, ca, origin, apiHost = 'mspi-api', apiPort = 8443 
       for (const key of ['content-type', 'content-length', 'set-cookie', 'retry-after', 'x-correlation-id']) {
         if (reply.headers[key] !== undefined) forwarded[key] = reply.headers[key];
       }
+      if (selected.download && reply.statusCode < 300) {
+        const disposition = reply.headers['content-disposition'];
+        if (reply.statusCode !== 200 || !evidenceTypes.includes(reply.headers['content-type']) ||
+            !/^attachment(?:;|$)/i.test(disposition || '')) {
+          reply.destroy();
+          return reject(res, 502, 'API_NO_DISPONIBLE');
+        }
+        forwarded['Content-Disposition'] = disposition;
+      }
+      if (selected.download) forwarded['Content-Security-Policy'] = "sandbox; default-src 'none'";
       res.writeHead(reply.statusCode, { ...securityHeaders, ...forwarded });
       pipeline(reply, res, () => {});
     });

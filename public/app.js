@@ -2,6 +2,7 @@ import * as api from './api.js';
 
 const work = document.querySelector('#workspace');
 const layout = document.querySelector('#layout');
+const navigation = document.querySelector('#workspace-navigation');
 const uuid = '[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}';
 const uuidPattern = new RegExp('^' + uuid + '$');
 const companyPath = new RegExp('^/empresas/(' + uuid + ')(/evaluaciones(?:/(' + uuid + '))?)?$');
@@ -10,6 +11,7 @@ const states = { BORRADOR: 'Borrador', EN_REVISION: 'En revisión', CERRADA: 'Ce
 const applicability = { SIN_DECIDIR: 'Sin decidir', APLICA: 'Aplica', NO_APLICA: 'No aplica' };
 const types = { CONTROL: 'Control', CLAUSULA: 'Cláusula' };
 const dateFormat = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeZone: 'UTC' });
+const sizeFormat = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 1 });
 let generation = 0;
 let page = 0;
 
@@ -47,9 +49,12 @@ function describe(error) {
   if (error.status === 403 || error.status === 404) return 'Esta empresa no está disponible para tu cuenta.';
   return 'No pudimos conectar con el servicio. Intenta de nuevo.';
 }
-function mount(content, signedIn, focus = false) {
+function mount(content, signedIn, focus = false, companyUrl, context) {
   work.replaceChildren(content);
   layout.classList.toggle('signed-in', signedIn);
+  navigation.replaceChildren();
+  navigation.hidden = !signedIn;
+  if (signedIn) navigation.append(workspaceNav(companyUrl, context));
   work.setAttribute('aria-busy', 'false');
   if (focus) {
     const target = work.querySelector('h1');
@@ -104,11 +109,19 @@ function signIn(notice = '', focus = false) {
   mount(view, false, focus);
 }
 
-function sessionBar(identity) {
+function sessionBar(identity, context) {
   const bar = template('session-bar');
   const name = identity.nombreVisible || 'Mi cuenta';
   bar.querySelector('.account-name').textContent = name;
   bar.querySelector('.account-icon').textContent = Array.from(name.trim())[0]?.toUpperCase() || 'M';
+  if (context) {
+    const company = bar.querySelector('.company-context');
+    company.hidden = false;
+    const copy = element('div', undefined, 'company-copy');
+    copy.append(element('span', 'EMPRESA ACTIVA', 'eyebrow label'), element('strong', context.nombre),
+      element('small', roleNames(context)));
+    company.append(copy, link('Cambiar empresa', '/empresas', 'switch-company'));
+  }
   const control = bar.querySelector('.logout');
   control.addEventListener('click', async () => {
     if (control.disabled) return;
@@ -142,6 +155,33 @@ function link(label, path, className) {
 }
 function roleNames(company) {
   return company.roles.map(role => roles[role] || role).join(' · ');
+}
+function canReadEvaluations(company) {
+  return company.roles.some(role => ['AE', 'GS', 'AU'].includes(role));
+}
+function workspaceNav(companyUrl, context) {
+  const nav = element('nav', undefined, 'workspace-nav');
+  nav.setAttribute('aria-label', 'Espacio de trabajo');
+  const entries = context ? [['Resumen de empresa', companyUrl]] : [['Mis empresas', '/empresas']];
+  if (context && canReadEvaluations(context)) entries.push(['Evaluaciones', companyUrl + '/evaluaciones']);
+  const list = element('div', undefined, 'workspace-links');
+  const select = element('select', undefined, 'workspace-select');
+  select.setAttribute('aria-label', 'Ir a una sección');
+  for (const [label, path] of entries) {
+    const current = location.pathname === path ||
+      (label === 'Evaluaciones' && location.pathname.startsWith(path + '/'));
+    const entry = link(label, path);
+    if (current) entry.setAttribute('aria-current', 'location');
+    list.append(entry);
+    const option = element('option', label);
+    option.value = path;
+    option.selected = current;
+    select.append(option);
+  }
+  select.addEventListener('change', () => { move(select.value); load(true); });
+  nav.append(list);
+  if (entries.length > 1) nav.append(select);
+  return nav;
 }
 function pager(label, current, hasMore, change) {
   if (current === 0 && !hasMore) return document.createDocumentFragment();
@@ -221,7 +261,59 @@ function evaluationListView(data, company, path, current) {
   view.append(pager('evaluaciones', current, data.hayMas, next => load(true, next)));
   return view;
 }
-function evaluationDetailView(data, responses, company, current) {
+function evidencePanel(companyId, evaluationId, responseId) {
+  const panel = element('details', undefined, 'evidence-panel');
+  const body = element('div', undefined, 'evidence-body');
+  body.setAttribute('aria-live', 'polite');
+  panel.append(element('summary', 'Evidencias'), body);
+  let request = 0;
+
+  async function show(current = 0, focus = false) {
+    const own = generation;
+    const call = ++request;
+    const active = () => own === generation && call === request && panel.isConnected && panel.open;
+    body.replaceChildren(element('p', 'Consultando evidencias…', 'loading'));
+    try {
+      const data = await api.evidence(companyId, evaluationId, responseId, current);
+      if (!active()) return;
+      const list = element('ul', undefined, 'evidence-list');
+      for (const item of data.elementos) {
+        if (!uuidPattern.test(item.evidenciaId)) continue;
+        const entry = element('li');
+        const file = element('a', item.nombreOriginal);
+        file.href = api.evidenceFile(companyId, evaluationId, responseId, item.evidenciaId);
+        file.setAttribute('aria-label', 'Descargar ' + item.nombreOriginal);
+        const size = item.tamanoBytes < 1000
+          ? item.tamanoBytes + ' B' : sizeFormat.format(item.tamanoBytes / 1000) + ' kB';
+        entry.append(file, element('small', size));
+        if (item.descripcion) entry.append(element('p', item.descripcion, 'preserve-lines'));
+        list.append(entry);
+      }
+      body.replaceChildren(list.childElementCount ? list : element('p', 'No hay evidencias en esta página.', 'empty'),
+        pager('evidencias', current, data.hayMas, next => show(next, true)));
+    } catch (error) {
+      if (!active()) return;
+      if (error.status === 401) {
+        ++generation;
+        return signIn('Tu sesión ya no está activa. Vuelve a entrar.', true);
+      }
+      const unavailable = error.status === 403 || error.status === 404;
+      body.replaceChildren(message(unavailable ? 'No se pueden consultar las evidencias de esta respuesta.' : describe(error)));
+      if (!unavailable) body.append(button('Reintentar', () => show(current, true)));
+    }
+    if (focus) panel.querySelector('summary').focus();
+  }
+
+  panel.addEventListener('toggle', () => {
+    if (panel.open) show();
+    else {
+      ++request;
+      body.replaceChildren();
+    }
+  });
+  return panel;
+}
+function evaluationDetailView(data, responses, company, current, companyId, evaluationId) {
   const view = document.createDocumentFragment();
   const details = element('dl', undefined, 'details evaluation-details');
   details.append(element('dt', 'Estado'), element('dd', states[data.estado] || data.estado),
@@ -246,6 +338,7 @@ function evaluationDetailView(data, responses, company, current) {
         row.append(element('h4', 'Justificación de aplicabilidad'), element('p', answer.justificacionAplicabilidad, 'preserve-lines'));
       }
       if (answer.fundamento) row.append(element('h4', 'Fundamento'), element('p', answer.fundamento, 'preserve-lines'));
+      if (uuidPattern.test(item.respuestaId)) row.append(evidencePanel(companyId, evaluationId, item.respuestaId));
       list.append(row);
     }
     view.append(list);
@@ -256,6 +349,8 @@ function evaluationDetailView(data, responses, company, current) {
 async function load(focus = false, evaluationPage = 0) {
   const own = ++generation;
   const match = companyPath.exec(location.pathname);
+  navigation.replaceChildren();
+  navigation.hidden = true;
   work.replaceChildren(element('p', 'Cargando…', 'loading'));
   work.setAttribute('aria-busy', 'true');
   let identity;
@@ -272,7 +367,7 @@ async function load(focus = false, evaluationPage = 0) {
     const context = await api.company(companyId);
     if (own !== generation) return;
     const view = document.createDocumentFragment();
-    view.append(sessionBar(identity));
+    view.append(sessionBar(identity, context));
     if (evaluationRoute) {
       evaluationList = companyUrl + '/evaluaciones';
       if (evaluationId) {
@@ -280,21 +375,21 @@ async function load(focus = false, evaluationPage = 0) {
           api.evaluation(companyId, evaluationId), api.responses(companyId, evaluationId, evaluationPage),
         ]);
         view.append(link('← Evaluaciones', evaluationList, 'back'),
-          evaluationDetailView(data, responses, context.nombre, evaluationPage));
+          evaluationDetailView(data, responses, context.nombre, evaluationPage, companyId, evaluationId));
       } else {
         const data = await api.evaluations(companyId, evaluationPage);
         view.append(link('← ' + context.nombre, companyUrl, 'back'),
           evaluationListView(data, context.nombre, evaluationList, evaluationPage));
       }
-      if (own === generation) mount(view, true, focus);
+      if (own === generation) mount(view, true, focus, companyUrl, context);
       return;
     }
-    view.append(link('← Mis empresas', '/empresas', 'back'), heading('EMPRESA SELECCIONADA', context.nombre));
+    view.append(heading('ESPACIO DE TRABAJO', 'Resumen de empresa'));
     const details = element('dl', undefined, 'details');
-    details.append(element('dt', 'Roles de tu cuenta'), element('dd', roleNames(context)),
-      element('dt', 'Zona horaria'), element('dd', context.zonaHoraria));
-    view.append(details, link('Ver evaluaciones', companyUrl + '/evaluaciones', 'secondary section-link'));
-    mount(view, true, focus);
+    details.append(element('dt', 'Zona horaria'), element('dd', context.zonaHoraria));
+    view.append(details);
+    if (canReadEvaluations(context)) view.append(link('Ver evaluaciones', companyUrl + '/evaluaciones', 'secondary section-link'));
+    mount(view, true, focus, companyUrl, context);
   } catch (error) {
     if (error.status === 401 && own === generation && !identity) {
       signIn(match ? 'Inicia sesión para acceder a una empresa.' : '', focus);
