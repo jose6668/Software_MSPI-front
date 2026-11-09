@@ -12,6 +12,17 @@ const evaluationView = new RegExp('^' + evaluationListPath + '(?:/' + uuid + ')?
 const evaluationDetail = new RegExp('^/api/v1' + evaluationPath + '(?:/resultados)?$');
 const pagedEvaluations = new RegExp('^/api/v1(?:' + evaluationListPath + '|' + evaluationPath + '/respuestas|' + evidencePath + ')$');
 const evidenceDownload = new RegExp('^/api/v1' + evidencePath + '/' + uuid + '/archivo$');
+const assetPath = '/empresas/' + uuid + '/activos';
+const assetView = new RegExp('^' + assetPath + '(?:/' + uuid + ')?$');
+const assetIndex = new RegExp('^/api/v1' + assetPath + '$');
+const assetClassifications = new RegExp('^/api/v1' + assetPath + '/' + uuid + '/clasificaciones$');
+const assetDetail = new RegExp('^/api/v1(?:' + assetPath + '|/empresas/' + uuid +
+  '/(?:procesos|responsables-negocio))/' + uuid + '$');
+const paging = 'pagina=(?:0|[1-9][0-9]{0,7})&tamano=20';
+const pageQuery = new RegExp('^' + paging + '$');
+const assetQuery = new RegExp('^' + paging + '(?:&estado=(?:ACTIVO|ARCHIVADO))?' +
+  '(?:&tipo=(?:INFORMACION|HARDWARE|SOFTWARE|SERVICIO|RECURSO_HUMANO|INSTALACION|RED))?' +
+  '(?:&texto=((?:[a-zA-Z0-9*_.+-]|%[0-9a-fA-F]{2}){1,750}))?$');
 const evidenceTypes = ['application/pdf', 'image/png', 'image/jpeg'];
 const maxBody = 16 * 1024;
 const securityHeaders = {
@@ -31,12 +42,17 @@ const assets = new Map([
 ]);
 
 export function route(method, target) {
-  // Reject absolute URLs, duplicate slashes and alternate encodings before URL normalization.
-  if (typeof target !== 'string' || !/^\/[a-zA-Z0-9_./?=&-]*$/.test(target) || target.includes('//')) return;
-  const [path, query] = target.split('?');
-  if (target.split('?').length > 2) return;
-  if (method === 'GET' && (path === '/api/v1/mis-empresas' || pagedEvaluations.test(path))) {
-    if (query === undefined || /^pagina=(0|[1-9][0-9]{0,7})&tamano=20$/.test(query)) return { upstream: target };
+  // Reject absolute URLs, duplicate slashes and encoded path segments before URL normalization.
+  if (typeof target !== 'string' || /[^a-zA-Z0-9_./?=&*+%-]/.test(target)) return;
+  const [path, query, extra] = target.split('?');
+  if (extra !== undefined || !/^\/[a-zA-Z0-9_./-]*$/.test(path) || path.includes('//')) return;
+  if (method === 'GET' && assetIndex.test(path)) {
+    if (query === undefined || validAssetQuery(query)) return { upstream: target };
+    return;
+  }
+  if (method === 'GET' && (path === '/api/v1/mis-empresas' || pagedEvaluations.test(path) ||
+      assetClassifications.test(path))) {
+    if (query === undefined || pageQuery.test(query)) return { upstream: target };
     return;
   }
   if (query !== undefined) return;
@@ -44,14 +60,27 @@ export function route(method, target) {
   if (path === '/api/v1/identidad/sesion' && ['GET', 'POST', 'DELETE'].includes(method)) {
     return { upstream: path };
   }
-  if (method === 'GET' && (path === '/api/v1/identidad/csrf' || contextRoute.test(path) || evaluationDetail.test(path))) {
+  if (method === 'GET' && (path === '/api/v1/identidad/csrf' || contextRoute.test(path) ||
+      evaluationDetail.test(path) || assetDetail.test(path))) {
     return { upstream: path };
   }
   if (['GET', 'HEAD'].includes(method)) {
     if (assets.has(path)) return { asset: assets.get(path) };
-    if (path === '/' || path === '/empresas' || companyRoute.test(path) || evaluationView.test(path)) {
+    if (path === '/' || path === '/empresas' || companyRoute.test(path) || evaluationView.test(path) || assetView.test(path)) {
       return { asset: ['index.html', 'text/html; charset=utf-8'] };
     }
+  }
+}
+
+function validAssetQuery(query) {
+  const match = assetQuery.exec(query);
+  if (!match) return false;
+  if (!match[1]) return true;
+  try {
+    const value = decodeURIComponent(match[1].replace(/\+/g, ' '));
+    return value.length <= 250 && !/\p{Cc}/u.test(value);
+  } catch {
+    return false;
   }
 }
 

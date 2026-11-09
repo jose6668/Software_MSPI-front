@@ -52,3 +52,17 @@ const evidencePath = (companyId, id, responseId) =>
 export const evidence = (companyId, id, responseId, page) => send(evidencePath(companyId, id, responseId) + pagination(page));
 export const evidenceFile = (companyId, id, responseId, evidenceId) =>
   prefix + evidencePath(companyId, id, responseId) + '/' + encodeURIComponent(evidenceId) + '/archivo';
+
+const companyPath = id => '/empresas/' + encodeURIComponent(id);
+const assetPath = (companyId, id) => companyPath(companyId) + '/activos/' + encodeURIComponent(id);
+export function assets(companyId, page, { estado, tipo, texto }) {
+  const query = new URLSearchParams({ pagina: page, tamano: 20 });
+  if (estado) query.set('estado', estado);
+  if (tipo) query.set('tipo', tipo);
+  if (texto) query.set('texto', texto);
+  return send(companyPath(companyId) + '/activos?' + query);
+}
+export const asset = (companyId, id) => send(assetPath(companyId, id));
+export const classifications = (companyId, id) => send(assetPath(companyId, id) + '/clasificaciones' + pagination(0));
+export const process = (companyId, id) => send(companyPath(companyId) + '/procesos/' + encodeURIComponent(id));
+export const responsible = (companyId, id) => send(companyPath(companyId) + '/responsables-negocio/' + encodeURIComponent(id));

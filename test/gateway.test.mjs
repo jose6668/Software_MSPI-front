@@ -128,6 +128,29 @@ test('limits evidence to paged listings and downloads of a specific attachment',
   }
 });
 
+test('allows asset reads and validates the encoded search only on the asset list', () => {
+  const company = '/api/v1/empresas/' + companyId;
+  const list = company + '/activos';
+  const detail = list + '/' + evaluationId;
+  const page = '?pagina=0&tamano=20';
+  const query = page + '&estado=ACTIVO&tipo=SOFTWARE&texto=n%C3%B3mina+%26+%25';
+  for (const path of [list + query, detail, detail + '/clasificaciones' + page,
+    company + '/procesos/' + evaluationId, company + '/responsables-negocio/' + evaluationId]) {
+    assert.deepEqual(route('GET', path), { upstream: path });
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) assert.equal(route(method, path), undefined);
+  }
+  for (const path of [list, detail]) {
+    assert.equal(route('HEAD', path.replace('/api/v1', '')).asset[0], 'index.html');
+  }
+  for (const path of [list + query + '&texto=duplicado', list + page + '&estado=BORRADOR',
+    list + page + '&tipo=OTRO', list + page + '&texto=%0A', list + page + '&texto=%C3',
+    list + page + '&texto=' + 'a'.repeat(251), list + page + '&texto=a/b',
+    list + page + '&texto=%GG', detail + query, detail + '/archivar', detail + '/historial',
+    list + '/%2e%2e', company + '/procesos' + page, list + page + '\n']) {
+    assert.equal(route('GET', path), undefined, path);
+  }
+});
+
 test('forwards a sandboxed attachment and rejects inline or unexpected content', async () => {
   const result = await call(publicServer, file, { headers: { Cookie: 'MSPISESSION=fixture' } });
   assert.equal(result.status, 200);
