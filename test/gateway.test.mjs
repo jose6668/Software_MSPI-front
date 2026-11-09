@@ -99,7 +99,7 @@ test('exposes only the read-only evaluation routes with bounded pagination', () 
   const detail = list + '/' + evaluation;
   const answers = '/api/v1' + detail + '/respuestas';
   const page = '?pagina=1&tamano=20';
-  for (const path of ['/api/v1' + list + page, '/api/v1' + detail, answers + page]) {
+  for (const path of ['/api/v1' + list + page, '/api/v1' + detail, '/api/v1' + detail + '/resultados', answers + page]) {
     assert.deepEqual(route('GET', path), { upstream: path });
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) assert.equal(route(method, path), undefined);
   }
@@ -108,7 +108,8 @@ test('exposes only the read-only evaluation routes with bounded pagination', () 
   }
   for (const path of ['/api/v1' + detail + page, answers + '?pagina=-1&tamano=20',
     answers + '?pagina=0&tamano=21', answers + page + '&tamano=20', answers + page + '&grupo=a',
-    answers + '/' + evaluation, '/api/v1' + detail + '/resultados', '/api/v1' + list + '/bad-id']) {
+    answers + '/' + evaluation, '/api/v1' + detail + '/resultados' + page,
+    '/api/v1' + detail + '/resultados/extra', '/api/v1' + list + '/bad-id']) {
     assert.equal(route('GET', path), undefined, path);
   }
 });

@@ -10,8 +10,14 @@ const roles = { AE: 'Administrador empresarial', GS: 'Gestor de seguridad', RA: 
 const states = { BORRADOR: 'Borrador', EN_REVISION: 'En revisión', CERRADA: 'Cerrada' };
 const applicability = { SIN_DECIDIR: 'Sin decidir', APLICA: 'Aplica', NO_APLICA: 'No aplica' };
 const types = { CONTROL: 'Control', CLAUSULA: 'Cláusula' };
+const resultStates = { SIN_ELEMENTOS: 'Sin elementos', NO_APLICA: 'No aplica', PENDIENTE: 'Pendiente',
+  PROVISIONAL: 'Resultado provisional', CALCULADO: 'Calculado' };
+const domains = { ORGANIZACIONAL: 'Organizacionales', PERSONAS: 'Personas', FISICO: 'Físicos', TECNOLOGICO: 'Tecnológicos' };
+const domainOrder = new Map(Object.keys(domains).map((name, index) => [name, index]));
 const dateFormat = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeZone: 'UTC' });
 const sizeFormat = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 1 });
+const resultFormat = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const groupOrder = new Intl.Collator('es-CO', { numeric: true });
 let generation = 0;
 let page = 0;
 
@@ -313,13 +319,75 @@ function evidencePanel(companyId, evaluationId, responseId) {
   });
   return panel;
 }
-function evaluationDetailView(data, responses, company, current, companyId, evaluationId) {
+function resultGroup(title, data, groupName) {
+  const group = element('section', undefined, 'result-group');
+  const table = element('table');
+  table.append(element('caption', title));
+  const header = table.createTHead().insertRow();
+  for (const name of ['Grupo', 'Evaluados', 'Puntaje']) {
+    const cell = element('th', name);
+    cell.scope = 'col';
+    header.append(cell);
+  }
+  const rows = table.createTBody();
+  for (const { grupo, resultado } of data) {
+    const row = rows.insertRow();
+    const name = element('th', groupName(grupo));
+    name.scope = 'row';
+    row.append(name, element('td', resultado.evaluados + ' / ' + resultado.aplicables),
+      element('td', resultado.puntaje == null ? 'Sin puntaje' : resultFormat.format(resultado.puntaje)));
+  }
+  if (rows.rows.length) group.append(table);
+  else group.append(element('h3', title), element('p', 'Sin resultados en este grupo.', 'empty'));
+  return group;
+}
+function resultsView(results, evaluation, detailPath) {
+  const section = element('section', undefined, 'results-panel');
+  const total = results.controlesGlobal;
+  const title = element('div', undefined, 'results-heading');
+  const label = element('div');
+  label.append(element('span', detailPath ? 'EVALUACIÓN MÁS RECIENTE' : 'DIAGNÓSTICO', 'eyebrow label'),
+    element('h2', detailPath ? evaluation.nombre : 'Resultados de evaluación'));
+  if (detailPath) label.append(element('p', evaluationDate(evaluation.fechaEvaluacion) + ' · ' +
+    (states[evaluation.estado] || evaluation.estado), 'result-context'));
+  title.append(label, element('span', resultStates[total.estado] || total.estado, 'status'));
+  const grid = element('div', undefined, 'results-grid');
+  const metrics = element('div', undefined, 'results-metrics');
+  metrics.append(element('h3', 'Puntaje de controles evaluados'),
+    element('p', total.puntaje == null ? 'Sin puntaje' : resultFormat.format(total.puntaje) + ' / 100', 'result-score'),
+    element('h3', 'Avance de evaluación'));
+  const percent = total.avance == null ? 'Sin avance calculable' : resultFormat.format(total.avance) + ' %';
+  metrics.append(element('p', percent + ' · ' + total.evaluados + ' de ' + total.aplicables + ' controles', 'result-context'));
+  if (total.avance != null) {
+    const progress = element('progress');
+    progress.max = 100;
+    progress.value = total.avance;
+    progress.setAttribute('aria-label', 'Avance de evaluación');
+    metrics.append(progress);
+  }
+  const counts = element('ul', undefined, 'result-counts');
+  for (const [value, text] of [[total.pendientes, 'sin calificar'], [total.sinDecidir, 'sin decidir aplicabilidad'],
+    [total.noAplican, 'no aplica']]) counts.append(element('li', value + ' ' + text));
+  metrics.append(counts);
+  const orderedDomains = [...results.dominios].sort((left, right) =>
+    (domainOrder.get(left.grupo) ?? domainOrder.size) - (domainOrder.get(right.grupo) ?? domainOrder.size));
+  grid.append(metrics, resultGroup('Resultados por dominio', orderedDomains, group => domains[group] || group));
+  const clauses = element('details', undefined, 'results-clauses');
+  const orderedClauses = [...results.clausulas].sort((left, right) => groupOrder.compare(left.grupo, right.grupo));
+  clauses.append(element('summary', 'Ver resultados por cláusula'),
+    resultGroup('Resultados por cláusula', orderedClauses, group => group.replace(/^CLAUSULA_/, 'Cláusula ')));
+  section.append(title, grid);
+  if (detailPath) section.append(link('Abrir evaluación', detailPath, 'secondary section-link'));
+  section.append(clauses);
+  return section;
+}
+function evaluationDetailView(data, responses, results, company, current, companyId, evaluationId) {
   const view = document.createDocumentFragment();
   const details = element('dl', undefined, 'details evaluation-details');
   details.append(element('dt', 'Estado'), element('dd', states[data.estado] || data.estado),
     element('dt', 'Fecha de evaluación'), element('dd', evaluationDate(data.fechaEvaluacion)),
     element('dt', 'Alcance'), element('dd', data.alcance, 'preserve-lines'));
-  view.append(heading(company, data.nombre), details, element('h2', 'Respuestas'));
+  view.append(heading(company, data.nombre), details, resultsView(results, data), element('h2', 'Respuestas'));
   if (!responses.elementos.length) {
     view.append(element('p', 'No hay respuestas en esta página.', 'empty'));
   } else {
@@ -371,11 +439,12 @@ async function load(focus = false, evaluationPage = 0) {
     if (evaluationRoute) {
       evaluationList = companyUrl + '/evaluaciones';
       if (evaluationId) {
-        const [data, responses] = await Promise.all([
+        const [data, responses, results] = await Promise.all([
           api.evaluation(companyId, evaluationId), api.responses(companyId, evaluationId, evaluationPage),
+          api.evaluationResults(companyId, evaluationId),
         ]);
         view.append(link('← Evaluaciones', evaluationList, 'back'),
-          evaluationDetailView(data, responses, context.nombre, evaluationPage, companyId, evaluationId));
+          evaluationDetailView(data, responses, results, context.nombre, evaluationPage, companyId, evaluationId));
       } else {
         const data = await api.evaluations(companyId, evaluationPage);
         view.append(link('← ' + context.nombre, companyUrl, 'back'),
@@ -384,12 +453,22 @@ async function load(focus = false, evaluationPage = 0) {
       if (own === generation) mount(view, true, focus, companyUrl, context);
       return;
     }
-    view.append(heading('ESPACIO DE TRABAJO', 'Resumen de empresa'));
-    const details = element('dl', undefined, 'details');
-    details.append(element('dt', 'Zona horaria'), element('dd', context.zonaHoraria));
-    view.append(details);
-    if (canReadEvaluations(context)) view.append(link('Ver evaluaciones', companyUrl + '/evaluaciones', 'secondary section-link'));
-    mount(view, true, focus, companyUrl, context);
+    view.append(heading('ESPACIO DE TRABAJO', 'Resumen de empresa'),
+      element('p', 'Zona horaria · ' + context.zonaHoraria, 'result-context'));
+    if (canReadEvaluations(context)) {
+      evaluationList = companyUrl + '/evaluaciones';
+      const page = await api.evaluations(companyId, 0);
+      if (own !== generation) return;
+      const latest = page.elementos[0];
+      if (latest && uuidPattern.test(latest.evaluacionId)) {
+        const results = await api.evaluationResults(companyId, latest.evaluacionId);
+        view.append(resultsView(results, latest, evaluationList + '/' + latest.evaluacionId));
+      } else {
+        view.append(element('p', 'No hay evaluaciones disponibles para mostrar resultados.', 'empty'));
+      }
+      view.append(link('Ver evaluaciones', evaluationList, 'secondary section-link'));
+    }
+    if (own === generation) mount(view, true, focus, companyUrl, context);
   } catch (error) {
     if (error.status === 401 && own === generation && !identity) {
       signIn(match ? 'Inicia sesión para acceder a una empresa.' : '', focus);
