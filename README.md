@@ -10,6 +10,8 @@ El espacio autenticado usa la navegación de Panorama. En el detalle de una eval
 
 El **Resumen de empresa** muestra los resultados de la evaluación más reciente disponible. El detalle también presenta sus resultados por dominio y por cláusula ([HU-FRONT-004](docs/hu/HU-FRONT-004.md)).
 
+En **Activos** se puede buscar por nombre o código, filtrar por tipo y estado y abrir la ficha de cada activo con su clasificación ([HU-FRONT-005](docs/hu/HU-FRONT-005.md)).
+
 Desde PowerShell, indicar el nombre del proyecto Compose del backend y el directorio TLS privado que contiene `server.p12`, `server-password.txt` y `ca.crt`:
 
 ```powershell
