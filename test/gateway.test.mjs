@@ -69,7 +69,7 @@ after(async () => {
   rmdirSync(directory);
 });
 
-test('routes only the endpoints of the first story', () => {
+test('routes only explicitly permitted endpoints', () => {
   assert.deepEqual(route('GET', '/api/v1/mis-empresas?pagina=1&tamano=20'),
     { upstream: '/api/v1/mis-empresas?pagina=1&tamano=20' });
   for (const path of ['/api/v1/identidad/sesion?contrasena=ignored', '/actuator/health',
@@ -78,6 +78,27 @@ test('routes only the endpoints of the first story', () => {
     assert.equal(route('GET', path), undefined, path);
   }
   assert.equal(route('PUT', '/api/v1/identidad/sesion'), undefined);
+});
+
+test('exposes only the read-only evaluation routes with bounded pagination', () => {
+  const company = 'e01b03ee-a2d7-4b42-a76e-e307737a3300';
+  const evaluation = '3afedfc1-4cc8-484b-b513-e7990a701bab';
+  const list = '/empresas/' + company + '/evaluaciones';
+  const detail = list + '/' + evaluation;
+  const answers = '/api/v1' + detail + '/respuestas';
+  const page = '?pagina=1&tamano=20';
+  for (const path of ['/api/v1' + list + page, '/api/v1' + detail, answers + page]) {
+    assert.deepEqual(route('GET', path), { upstream: path });
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) assert.equal(route(method, path), undefined);
+  }
+  for (const path of [list, detail]) {
+    for (const method of ['GET', 'HEAD']) assert.equal(route(method, path).asset[0], 'index.html');
+  }
+  for (const path of ['/api/v1' + detail + page, answers + '?pagina=-1&tamano=20',
+    answers + '?pagina=0&tamano=21', answers + page + '&tamano=20', answers + page + '&grupo=a',
+    answers + '/' + evaluation, '/api/v1' + detail + '/resultados', '/api/v1' + list + '/bad-id']) {
+    assert.equal(route('GET', path), undefined, path);
+  }
 });
 
 test('proxies HTTPS with the session cookie and CSRF but drops forwarded IP', async () => {

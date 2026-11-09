@@ -38,3 +38,11 @@ export const logout = async () =>
   send('/identidad/sesion', { method: 'DELETE', token: await csrf() });
 export const companies = (page) => send('/mis-empresas?pagina=' + page + '&tamano=20');
 export const company = (id) => send('/empresas/' + encodeURIComponent(id) + '/contexto');
+
+const evaluationListPath = (companyId) => '/empresas/' + encodeURIComponent(companyId) + '/evaluaciones';
+const evaluationPath = (companyId, id) => evaluationListPath(companyId) + '/' + encodeURIComponent(id);
+const pagination = (page) => '?pagina=' + page + '&tamano=20';
+
+export const evaluations = (companyId, page) => send(evaluationListPath(companyId) + pagination(page));
+export const evaluation = (companyId, id) => send(evaluationPath(companyId, id));
+export const responses = (companyId, id, page) => send(evaluationPath(companyId, id) + '/respuestas' + pagination(page));

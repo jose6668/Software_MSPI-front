@@ -5,6 +5,11 @@ import { pipeline } from 'node:stream';
 const uuid = '[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}';
 const companyRoute = new RegExp('^/empresas/' + uuid + '$');
 const contextRoute = new RegExp('^/api/v1/empresas/' + uuid + '/contexto$');
+const evaluationListPath = '/empresas/' + uuid + '/evaluaciones';
+const evaluationPath = evaluationListPath + '/' + uuid;
+const evaluationView = new RegExp('^' + evaluationListPath + '(?:/' + uuid + ')?$');
+const evaluationDetail = new RegExp('^/api/v1' + evaluationPath + '$');
+const pagedEvaluations = new RegExp('^/api/v1(?:' + evaluationListPath + '|' + evaluationPath + '/respuestas)$');
 const maxBody = 16 * 1024;
 const securityHeaders = {
   'Cache-Control': 'no-store',
@@ -27,18 +32,20 @@ export function route(method, target) {
   if (typeof target !== 'string' || !/^\/[a-zA-Z0-9_./?=&-]*$/.test(target) || target.includes('//')) return;
   const [path, query] = target.split('?');
   if (target.split('?').length > 2) return;
-  if (method === 'GET' && path === '/api/v1/mis-empresas') {
-    if (query === undefined || /^pagina=(0|[1-9][0-9]{0,7})&tamano=(20)$/.test(query)) return { upstream: target };
+  if (method === 'GET' && (path === '/api/v1/mis-empresas' || pagedEvaluations.test(path))) {
+    if (query === undefined || /^pagina=(0|[1-9][0-9]{0,7})&tamano=20$/.test(query)) return { upstream: target };
     return;
   }
   if (query !== undefined) return;
   if (path === '/api/v1/identidad/sesion' && ['GET', 'POST', 'DELETE'].includes(method)) {
     return { upstream: path };
   }
-  if (method === 'GET' && (path === '/api/v1/identidad/csrf' || contextRoute.test(path))) return { upstream: path };
+  if (method === 'GET' && (path === '/api/v1/identidad/csrf' || contextRoute.test(path) || evaluationDetail.test(path))) {
+    return { upstream: path };
+  }
   if (['GET', 'HEAD'].includes(method)) {
     if (assets.has(path)) return { asset: assets.get(path) };
-    if (path === '/' || path === '/empresas' || companyRoute.test(path)) {
+    if (path === '/' || path === '/empresas' || companyRoute.test(path) || evaluationView.test(path)) {
       return { asset: ['index.html', 'text/html; charset=utf-8'] };
     }
   }

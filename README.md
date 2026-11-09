@@ -4,7 +4,7 @@ Prevención de secretos implementada en PR hacia Develop: [configuración y veri
 
 ## Iniciar el frontend local
 
-HU-FRONT-001 permite iniciar sesión, listar y elegir una empresa autorizada, consultar su contexto y cerrar sesión. Necesita el backend MSPI en ejecución en Docker, con HTTPS y una cuenta de prueba con membresía. El navegador usa el mismo origen para la interfaz y la API.
+HU-FRONT-001 permite iniciar sesión, listar y elegir una empresa autorizada, consultar su contexto y cerrar sesión. Desde la empresa, **Ver evaluaciones** abre el listado, el detalle y sus respuestas ([HU-FRONT-002](docs/hu/HU-FRONT-002.md)). Necesita el backend MSPI en ejecución en Docker, con HTTPS y una cuenta de prueba con membresía. El navegador usa el mismo origen para la interfaz y la API.
 
 Desde PowerShell, indicar el nombre del proyecto Compose del backend y el directorio TLS privado que contiene `server.p12`, `server-password.txt` y `ca.crt`:
 
